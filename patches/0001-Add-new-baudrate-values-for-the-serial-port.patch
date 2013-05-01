@@ -1,0 +1,56 @@
+From ebf1b43fd60898c56803cc8b2619e236341daebf Mon Sep 17 00:00:00 2001
+From: Tony Cheneau <tony.cheneau@nist.gov>
+Date: Fri, 26 Apr 2013 14:07:15 -0400
+Subject: [PATCH] Add new baudrate values for the serial port.
+
+---
+ stty.c | 33 +++++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/stty.c b/stty.c
+index d1083ea..9a07beb 100644
+--- a/stty.c
++++ b/stty.c
+@@ -62,6 +62,39 @@ static struct sttyset {
+ #ifdef B230400
+ 	{ "230400",	BFLG,	0,		B230400	},
+ #endif
++#ifdef B460800
++	{ "460800",	BFLG,	0,		B460800	},
++#endif
++#ifdef B500000
++	{ "500000",	BFLG,	0,		B500000	},
++#endif
++#ifdef B576000
++	{ "576000",	BFLG,	0,		B576000	},
++#endif
++#ifdef B921600
++	{ "921600",	BFLG,	0,		B921600	},
++#endif
++#ifdef B1000000
++	{ "1000000",	BFLG,	0,		B1000000	},
++#endif
++#ifdef B1152000
++	{ "1152000",	BFLG,	0,		B1152000	},
++#endif
++#ifdef B1500000
++	{ "1500000",	BFLG,	0,		B1500000	},
++#endif
++#ifdef B2000000
++	{ "2000000",	BFLG,	0,		B2000000	},
++#endif
++#ifdef B2500000
++	{ "2500000",	BFLG,	0,		B2500000	},
++#endif
++#ifdef B3000000
++	{ "3000000",	BFLG,	0,		B3000000	},
++#endif
++#ifdef B3500000
++	{ "3500000",	BFLG,	0,		B3500000	},
++#endif
+ 	{ "cs7",	CFLG,	CSIZE,		CS7	},
+ 	{ "cs8",	CFLG,	CSIZE,		CS8	},
+ 	{ "cstopb",	CFLG,	CSTOPB,		CSTOPB	},
+-- 
+1.8.2
+
