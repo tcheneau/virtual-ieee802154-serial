@@ -21,16 +21,20 @@
 * this software.
 */
 
+#define _XOPEN_SOURCE 500
+#include <stdlib.h>
+
 #include <sys/select.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <getopt.h>
 #include <errno.h>
+#include <termios.h>
 
 #undef max
 #define max(x,y) ((x) > (y) ? (x) : (y))
@@ -69,12 +73,15 @@
 /* 127 (max frame size) + 5 (max command size) */
 #define BUFSIZE 132
 
+#define BAUDRATE 921600
+
 #define HAVE_GETOPT_LONG
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option iz_long_opts[] = {
 	{ "udp-remote-port", required_argument, NULL, 'r' },
-	{ "tcp-local", required_argument, NULL, 't' },
+	{ "baudrate", required_argument, NULL, 'b' },
+	{ "device-name", required_argument, NULL, 'n'},
 	{ "udp-dest", required_argument, NULL, 'd' },
 	{ "udp-local-port", required_argument, NULL, 'l'},
 	{ "version", no_argument, NULL, 'v' },
@@ -105,52 +112,82 @@ void print_version() {
 void print_usage(const char * prgname) {
 	printf("This program mimics the behavior of a IEEE 802.15.4 Serial device (e.g. RedBee Econotag)\n\n");
 
-	printf("usage: %s -t portnum -d destaddr -l portnum -r portnum\n", prgname);
-	printf("-t, --tcp-local: local TCP port to be bound\n"
+	printf("usage: %s -d destaddr -l portnum -r portnum [-b baudrate] [-n devicename]\n", prgname);
+	printf("-b, --baudrate: baudrate of the fake serial port (default \"%d\")\n"
+		   "-n, --device-name: name of the fake serial port (default \"/dev/fakeserial0\")\n"
 		   "-d, --udp-dest: destination address for the UDP traffic sent to the backend\n"
 		   "-l, --udp-local-port: local udp port to be bound\n"
 		   "-r, --udp-remote-port: remote UDP port to connect to and to bind locally\n"
 		   "-h, --help: this help message\n"
-		   "-v, --version: print program version and exits\n");
+		   "-v, --version: print program version and exits\n", BAUDRATE);
 }
 
-int ipv6_server_setup(const char * lport) {
-	int sockfd, yes = 1;
-	struct sockaddr_in6 serv_addr;
+/* return the file descriptor to the fake serial device */
+int set_serial(char * devname, int baudrate){
+	int fd;
+	struct termios tbuf;
+	char * ptmaster;
 
-	sockfd = socket(AF_INET6, SOCK_STREAM, 0);
-	if (sockfd < 0)
-	{
-	   perror("socket()");
-	   exit(EXIT_SUCCESS);
-	}
-
-	bzero((char *) &serv_addr, sizeof(serv_addr));
-
-	serv_addr.sin6_family = AF_INET6;
-	serv_addr.sin6_addr = in6addr_any;
-	serv_addr.sin6_port = htons(atoi(lport));
-
-	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,
-				   sizeof(int)) == -1) {
-		perror("setsockopt()");
+	fd = open("/dev/ptmx", O_RDWR);
+	if (fd < 0) {
+		perror("open");
 		exit(EXIT_FAILURE);
 	}
 
-	if (bind(sockfd, (struct sockaddr *) &serv_addr,
-	         sizeof(serv_addr)) < 0)
-	{
-		perror("bind()");
+	if ( grantpt(fd) < 0 ) {
+		perror("grantpt");
 		exit(EXIT_FAILURE);
 	}
 
-	if (listen(sockfd, SINGLE_CONNECTION) == -1) {
-		perror("listen()");
+	if ( unlockpt(fd) < 0 ) {
+		perror("unlockpt");
 		exit(EXIT_FAILURE);
 	}
 
-	return sockfd;
+	/* create the serial port entry in /dev */
+	unlink(devname);
+	ptmaster = ptsname(fd);
+	if (!ptmaster) {
+		perror("ptsname");
+		exit(EXIT_FAILURE);
+	}
+
+	if ( symlink(ptmaster, devname) ) {
+		perror("symlink");
+		exit(EXIT_FAILURE);
+	}
+
+	/* set, among other things, the baudrate of the pseudo-terminal */
+
+	memset(&tbuf, 0, sizeof(tbuf));
+
+	tbuf.c_iflag |= IGNBRK;
+	tbuf.c_cflag |= CLOCAL | CREAD | CS8;
+	tbuf.c_cc[VMIN] = 1;
+	tbuf.c_cc[VTIME] = 5;
+
+	switch (baudrate){
+	case 115200:
+		cfsetospeed(&tbuf, B115200);
+		cfsetispeed(&tbuf, B115200);
+		break;
+	case 921600:
+		cfsetospeed(&tbuf, B921600);
+		cfsetispeed(&tbuf, B921600);
+		break;
+	default:
+		fprintf(stderr, "speed %d is not supported\n", baudrate);
+	    exit(EXIT_FAILURE);
+	}
+
+	if ( tcsetattr(fd, TCSANOW, &tbuf) < 0 ) {
+		perror("tcsetattr");
+		exit(EXIT_FAILURE);
+	}
+
+	return fd;
 }
+
 
 int client_setup(struct sockaddr * dest_addr, socklen_t * addr_len,
 				 const char * dst, const char * lport,
@@ -255,64 +292,68 @@ int client_setup(struct sockaddr * dest_addr, socklen_t * addr_len,
 }
 
 
-unsigned char read_one_byte(int sock) {
+unsigned char read_one_byte(int fd) {
 	unsigned char buf[1];
 
-	if ( recv(sock, buf, 1, 0) <= 0 ) {
-		perror("recv");
+	if ( read(fd, buf, 1) <= 0 ) {
+		perror("read");
 		exit(EXIT_FAILURE);
 	}
 	return buf[0];
 }
 
 /* send a success message that matches the command */
-void send_success(int sock, unsigned char type) {
+void send_success(int fd, unsigned char type) {
 	unsigned char buf[4] = { START_BYTE1,
 							 START_BYTE2,
 							 0, /* cmd */
 							 SUCCESS};
 
 	buf[2] = type | RESP_MASK; /* compute the response type */
-	send(sock, buf, 4, 0);
+	if ( write(fd, buf, 4) < 0 ) {
+		perror("write");
+		exit(EXIT_FAILURE);
+	}
+
 	return;
 }
 
 /* parse command from the linux serial driver
  * see http://sourceforge.net/apps/trac/linux-zigbee/wiki/SerialV1 */
-void parse_cmd(int fromsock, int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len) {
+void parse_cmd(int serialfd, int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len) {
 	char buf[BUFSIZE] = { START_BYTE1, START_BYTE2 };
 	unsigned char cmd_type;
 
-	if ( START_BYTE1 != read_one_byte(fromsock) )
+	if ( START_BYTE1 != read_one_byte(serialfd) )
 		return;
 
-	if ( START_BYTE2 != read_one_byte(fromsock) )
+	if ( START_BYTE2 != read_one_byte(serialfd) )
 		return;
 
-	cmd_type = read_one_byte(fromsock);
+	cmd_type = read_one_byte(serialfd);
 
 	PRINTF("parse_cmd: received a command of type %d\n", cmd_type);
 
 	switch (cmd_type) {
 	case SET_PANID: {
 		unsigned char hi, lo;
-		hi = read_one_byte(fromsock);
-		lo = read_one_byte(fromsock);
+		hi = read_one_byte(serialfd);
+		lo = read_one_byte(serialfd);
 		panid = hi << 8 | lo;
-		send_success(fromsock, cmd_type);
+		send_success(serialfd, cmd_type);
 		break;
 		}
 	case SET_SHORTADDR: {
-		ieee802154_short_addr[1] = read_one_byte(fromsock);
-		ieee802154_short_addr[0] = read_one_byte(fromsock);
-		send_success(fromsock, cmd_type);
+		ieee802154_short_addr[1] = read_one_byte(serialfd);
+		ieee802154_short_addr[0] = read_one_byte(serialfd);
+		send_success(serialfd, cmd_type);
 		break;
 		}
 	case SET_LONGADDR: {
 		int i = 0;
 		for(i=0; i < IEEE802154_LONG_ADDR_LEN; ++i)
-			ieee802154_long_addr[i] = read_one_byte(fromsock);
-		send_success(fromsock, cmd_type);
+			ieee802154_long_addr[i] = read_one_byte(serialfd);
+		send_success(serialfd, cmd_type);
 		break;
 		}
 	case GET_ADDR: {
@@ -322,16 +363,16 @@ void parse_cmd(int fromsock, int tosock, struct sockaddr * dest_addr, socklen_t 
 		/* fill out the rest of the buffer */
 		for(i=0; i< IEEE802154_LONG_ADDR_LEN; i++)
 			buf[4+i] = ieee802154_long_addr[i];
-		send(fromsock, buf, 2 + 1+ 1 + IEEE802154_LONG_ADDR_LEN, 0);
+		send(serialfd, buf, 2 + 1+ 1 + IEEE802154_LONG_ADDR_LEN, 0);
 		break;
 		}
 	case TX_BLOCK: {
 		unsigned char len = 0;
 		int i;
-		len =  read_one_byte(fromsock);
+		len =  read_one_byte(serialfd);
 		for (i=0; i < len; i++)
-			buf[i] = read_one_byte(fromsock);
-		send_success(fromsock, cmd_type);
+			buf[i] = read_one_byte(serialfd);
+		send_success(serialfd, cmd_type);
 		PRINTF("parse_cmd: sending IEEE 802.15.4 frame to the backend\n");
 		if (sendto(tosock, buf, len, 0, dest_addr, dest_addr_len) < 0) {
 			perror("sendto()");
@@ -341,18 +382,18 @@ void parse_cmd(int fromsock, int tosock, struct sockaddr * dest_addr, socklen_t 
 		}
 	case SET_CHANNEL:
 		/* currently ignore the channel being set */
-		read_one_byte(fromsock);
-		send_success(fromsock, cmd_type);
+		read_one_byte(serialfd);
+		send_success(serialfd, cmd_type);
 		break;
 	default:
 		/* OPEN, CLOSE, ED, CCA, SET_STATE */
-		send_success(fromsock, cmd_type);
+		send_success(serialfd, cmd_type);
 	}
 
 	return;
 }
 
-void send_to_linux(int fromsock, int tosock) {
+void send_to_linux(int fromsock, int serialfd) {
 	char buf[BUFSIZE];
 	ssize_t msg_size;
 	unsigned char lqi = 0;
@@ -382,36 +423,36 @@ void send_to_linux(int fromsock, int tosock) {
 	}
 
 	/* inject the packet in the Linux network stack */
-	send(tosock, cmd, sizeof cmd, 0);
+	write(serialfd, cmd, sizeof cmd);
 	/* send LQI */
-	send(tosock, &lqi, 1, 0);
+	write(serialfd, &lqi, 1);
 	/* send data length */
-	send(tosock, &msg_size, 1, 0);
+	write(serialfd, &msg_size, 1);
 	/* send data */
-	send(tosock, buf, msg_size, 0);
+	write(serialfd, buf, msg_size);
 
 	return;
 }
 
 
 int main(int argc, char *argv[]) {
-	int udpsock, clisock, serialsock;
-	int c, nfds;
+	int udpsock, serialfd;
+	int c, nfds, baudrate = BAUDRATE;
 	fd_set readfds;
-	char * srvport = NULL;
 	char * clidest = NULL;
 	char * udp_dport = NULL;
 	char * udp_lport = NULL;
-	struct sockaddr cli_addr, dest_addr;
-	socklen_t sin_size = 0, dest_addr_len = 0;
+	char * devname = "fakeserial0";
+	struct sockaddr dest_addr;
+	socklen_t dest_addr_len = 0;
 
 	/* parse the arguments with getopt */
 	while (1) {
 #ifdef HAVE_GETOPT_LONG
 		int opt_idx = -1;
-		c = getopt_long(argc, argv, "d:l:r:t:vh", iz_long_opts, &opt_idx);
+		c = getopt_long(argc, argv, "b:n:d:l:r:vh", iz_long_opts, &opt_idx);
 #else
-		c = getopt(argc, argv, "d:l:r:t:vh");
+		c = getopt(argc, argv, "b:n:d:l:r:vh");
 #endif
 		if (c == -1)
 			break;
@@ -420,11 +461,13 @@ int main(int argc, char *argv[]) {
 		case 'd':
 			clidest = optarg;
 			break;
+		case 'b':
+			baudrate = atoi(optarg);
+			break;
+		case 'n':
+			devname = optarg;
 		case 'r':
 			udp_dport = optarg;
-			break;
-		case 't':
-			srvport = optarg;
 			break;
 		case 'l':
 			udp_lport = optarg;
@@ -445,13 +488,13 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	if ( !(udp_lport && srvport && clidest && udp_dport) ){
-		printf("-t, -l, -r, and -d arguments must be set\n");
+	if ( !(udp_lport && clidest && udp_dport) ){
+		printf("-l, -r, and -d arguments must be set\n");
 		exit(EXIT_FAILURE);
 	}
 
-	/* open the server socket */
-	serialsock = ipv6_server_setup(srvport);
+	/* set the fake serial port */
+	serialfd = set_serial(devname, baudrate);
 
 	/* open the client socket where the IEEE 802.15.4 MAC frames will be redirected */
 	udpsock = client_setup(&dest_addr, &dest_addr_len, clidest, udp_lport, udp_dport);
@@ -461,18 +504,12 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-	printf("Waiting for a new connection from remserial on port %s\n", srvport);
-	clisock = accept(serialsock, (struct sockaddr *) & cli_addr, &sin_size);
-	printf("Received a connection on the socket, "
-		   "getting ready to process serial command messages\n");
-	close(serialsock);
-
 	/* start the processing loop */
 	while (1) {
 		FD_ZERO(&readfds);
-		FD_SET(clisock, &readfds);
+		FD_SET(serialfd, &readfds);
 		FD_SET(udpsock, &readfds);
-		nfds = max(clisock, udpsock);
+		nfds = max(serialfd, udpsock);
 
 		PRINTF("select: waiting for new activity\n");
 		if ( 0 >= select(nfds + 1, &readfds, NULL, NULL, NULL)) {
@@ -483,16 +520,17 @@ int main(int argc, char *argv[]) {
 		if (FD_ISSET(udpsock, &readfds)) {
 			PRINTF("select: received a packet from backend\n");
 			/* pass the packet to the kernel */
-			send_to_linux(udpsock, clisock);
+			send_to_linux(udpsock, serialfd);
 		}
-		if (FD_ISSET(clisock, &readfds)) {
+		if (FD_ISSET(serialfd, &readfds)) {
 			PRINTF("select: received a packet from the fake serial device\n");
 			/* need to parse the serial protocol */
-			parse_cmd(clisock, udpsock, &dest_addr, dest_addr_len);
+			parse_cmd(serialfd, udpsock, &dest_addr, dest_addr_len);
 		}
 	}
 
+	unlink(devname);
 	close(udpsock);
-	close(serialsock);
+	close(serialfd);
 	return 0;
 }
