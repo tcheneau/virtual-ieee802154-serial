@@ -4,7 +4,7 @@ Virtual tunnel interface for the IEEE 802.15.4 serial protocol
 What is this software about?
 ----------------------------
 
-![fakeserial architecture, comparing the regular software stack and the new one](figures/fakeserial-architecture.svg "fakeserial architecture")
+![fakeserial architecture, comparing the regular software stack and the new one](figures/fakeserial-architecture.png "fakeserial architecture")
 
 Some existing IEEE 802.15.4 devices, like the [RedBee Econotag](http://www.redwirellc.com/store/node/1)
 are connected to a computer through a regular USB interface and present a
