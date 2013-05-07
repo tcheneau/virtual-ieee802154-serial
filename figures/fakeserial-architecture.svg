@@ -14,7 +14,10 @@
    id="svg3097"
    version="1.1"
    inkscape:version="0.47 r22583"
-   sodipodi:docname="fakeserial-architecture.svg">
+   sodipodi:docname="fakeserial-architecture.svg"
+   inkscape:export-filename="/users/tcheneau/sources/virtual-ieee802154-serial/figures/fakeserial-architecture.png"
+   inkscape:export-xdpi="100"
+   inkscape:export-ydpi="100">
   <defs
      id="defs3099">
     <inkscape:perspective
@@ -195,9 +198,9 @@
      borderopacity="1.0"
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
-     inkscape:zoom="0.7"
-     inkscape:cx="622.76762"
-     inkscape:cy="432.95926"
+     inkscape:zoom="0.98994949"
+     inkscape:cx="555.01421"
+     inkscape:cy="387.39348"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -228,7 +231,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -322,56 +325,11 @@
        style="fill:none;stroke:#000000;stroke-width:0.94600004;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;marker-start:url(#Arrow1Lstart);marker-mid:none;marker-end:url(#Arrow1Lend)"
        d="m 164.44096,690.07524 0,38.5811"
        id="path5205" />
-    <g
-       transform="matrix(0.79969197,0,0,0.79970453,-90.019211,101.66865)"
-       id="g5308">
-      <rect
-         style="fill:#fff31b;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:5.00188637;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0"
-         id="rect5310"
-         width="247.6022"
-         height="122.92481"
-         x="514.78564"
-         y="616.23206"
-         rx="46.803333"
-         ry="46.802597" />
-      <text
-         sodipodi:linespacing="125%"
-         id="text5312"
-         y="667.22083"
-         x="638.47687"
-         style="font-size:30px;font-style:normal;font-weight:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;font-family:Sans"
-         xml:space="preserve"><tspan
-           id="tspan5318"
-           y="667.22083"
-           x="638.47687"
-           sodipodi:role="line">remserial</tspan><tspan
-           y="698.74036"
-           x="638.47687"
-           sodipodi:role="line"
-           id="tspan5335"
-           style="font-size:24px">(slightly modified)</tspan></text>
-    </g>
     <path
        style="fill:none;stroke:#000000;stroke-width:0.96699995;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;marker-start:url(#Arrow1Lstart);marker-mid:none;marker-end:url(#Arrow1Lend)"
        d="m 422.61568,445.49867 0,147.37412"
        id="path5320"
        sodipodi:nodetypes="cs" />
-    <text
-       xml:space="preserve"
-       style="font-size:23.99094772px;font-style:normal;font-weight:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Sans"
-       x="444.34335"
-       y="720.92798"
-       id="text5347"
-       sodipodi:linespacing="125%"
-       transform="scale(0.99999213,1.0000079)"><tspan
-         sodipodi:role="line"
-         id="tspan5349"
-         x="444.34335"
-         y="720.92798">TCP</tspan></text>
-    <path
-       id="path5322"
-       d="m 421.80787,691.62593 0,38.5811"
-       style="fill:none;stroke:#000000;stroke-width:0.94600004;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;marker-start:url(#Arrow1Lstart);marker-mid:none;marker-end:url(#Arrow1Lend)" />
     <g
        id="g3358"
        transform="matrix(0.79969197,0,0,0.79970453,-51.354509,26.539217)">
@@ -675,73 +633,77 @@
          x="-17.542126"
          y="565.89362">{</tspan></text>
     <g
-       id="g3453"
-       transform="matrix(0.79969197,0,0,0.79970453,-90.019211,235.33355)">
-      <rect
-         ry="46.802597"
-         rx="46.803333"
-         y="616.23206"
-         x="514.78564"
-         height="122.92481"
-         width="247.6022"
-         id="rect3455"
-         style="fill:#ff635a;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:5.00188637;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0" />
-      <text
-         xml:space="preserve"
-         style="font-size:30px;font-style:normal;font-weight:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;font-family:Sans"
-         x="639.64142"
-         y="688.87854"
-         id="text3457"
-         sodipodi:linespacing="125%"><tspan
-           style="font-size:30px"
-           id="tspan3461"
-           sodipodi:role="line"
+       id="g2943"
+       transform="translate(0,1.828079)">
+      <g
+         transform="matrix(0.79969197,0,0,0.79970453,-90.019211,98.241161)"
+         id="g3453">
+        <rect
+           style="fill:#ff635a;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:5.00188637;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0"
+           id="rect3455"
+           width="247.6022"
+           height="122.92481"
+           x="514.78564"
+           y="616.23206"
+           rx="46.803333"
+           ry="46.802597" />
+        <text
+           sodipodi:linespacing="125%"
+           id="text3457"
+           y="688.87854"
            x="639.64142"
-           y="688.87854">fakeserial</tspan></text>
-    </g>
-    <text
-       sodipodi:linespacing="125%"
-       id="text4309"
-       y="858.01904"
-       x="444.34335"
-       style="font-size:23.99094772px;font-style:normal;font-weight:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Sans"
-       xml:space="preserve"
-       transform="scale(0.99999213,1.0000079)"><tspan
-         y="858.01904"
+           style="font-size:30px;font-style:normal;font-weight:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;font-family:Sans"
+           xml:space="preserve"><tspan
+             y="688.87854"
+             x="639.64142"
+             sodipodi:role="line"
+             id="tspan3461"
+             style="font-size:30px">fakeserial</tspan></text>
+      </g>
+      <text
+         transform="scale(0.99999212,1.0000079)"
+         xml:space="preserve"
+         style="font-size:23.99094772px;font-style:normal;font-weight:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Sans"
          x="444.34335"
-         id="tspan4311"
-         sodipodi:role="line">UDP</tspan></text>
-    <path
-       style="fill:none;stroke:#000000;stroke-width:0.94600004;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;marker-start:url(#Arrow1Lstart);marker-mid:none;marker-end:url(#Arrow1Lend)"
-       d="m 421.80787,828.71813 0,38.5811"
-       id="path4313" />
-    <rect
-       ry="37.428249"
-       rx="37.428249"
-       y="865.22931"
-       x="321.65073"
-       height="98.303535"
-       width="198.00549"
-       id="rect4317"
-       style="fill:#9bff5a;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0" />
-    <text
-       xml:space="preserve"
-       style="font-size:23.99094772px;font-style:normal;font-weight:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;font-family:Sans"
-       x="421.50021"
-       y="909.60864"
-       id="text4319"
-       sodipodi:linespacing="125%"
-       transform="scale(0.99999213,1.0000079)"><tspan
-         id="tspan4327"
-         style="font-size:23.99094772px"
-         sodipodi:role="line"
+         y="720.92773"
+         id="text4309"
+         sodipodi:linespacing="125%"><tspan
+           sodipodi:role="line"
+           id="tspan4311"
+           x="444.34335"
+           y="720.92773">UDP</tspan></text>
+      <path
+         id="path4313"
+         d="m 421.80787,691.62574 0,38.5811"
+         style="fill:none;stroke:#000000;stroke-width:0.94600004;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;marker-start:url(#Arrow1Lstart);marker-mid:none;marker-end:url(#Arrow1Lend)" />
+      <rect
+         style="fill:#9bff5a;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0"
+         id="rect4317"
+         width="198.00549"
+         height="98.303535"
+         x="321.65073"
+         y="728.1369"
+         rx="37.428249"
+         ry="37.428249" />
+      <text
+         transform="scale(0.99999212,1.0000079)"
+         sodipodi:linespacing="125%"
+         id="text4319"
+         y="772.51733"
          x="421.50021"
-         y="909.60864">PHY simulator</tspan><tspan
-         id="tspan4331"
-         style="font-size:22.39155197px"
-         sodipodi:role="line"
-         x="421.50021"
-         y="938.00311">(NS-3, GNUradio)</tspan></text>
+         style="font-size:23.99094772px;font-style:normal;font-weight:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;font-family:Sans"
+         xml:space="preserve"><tspan
+           y="772.51733"
+           x="421.50021"
+           sodipodi:role="line"
+           style="font-size:23.99094772px"
+           id="tspan4327">PHY simulator</tspan><tspan
+           y="800.9118"
+           x="421.50021"
+           sodipodi:role="line"
+           style="font-size:22.39155197px"
+           id="tspan4331">(NS-3, GNUradio)</tspan></text>
+    </g>
     <text
        xml:space="preserve"
        style="font-size:30px;font-style:normal;font-weight:normal;line-height:125%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:Sans"
@@ -765,6 +727,6 @@
          sodipodi:role="line"
          id="tspan4343"
          x="439.51788"
-         y="583.87268">/dev/remserial1</tspan></text>
+         y="583.87268">/dev/fakeserial0</tspan></text>
   </g>
 </svg>
