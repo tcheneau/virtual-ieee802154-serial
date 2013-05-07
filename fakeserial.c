@@ -90,9 +90,14 @@ static const struct option iz_long_opts[] = {
 };
 #endif
 
+/* global variables */
+
 static uint16_t panid;
 static unsigned char ieee802154_long_addr[IEEE802154_LONG_ADDR_LEN];
 static unsigned char ieee802154_short_addr[IEEE802154_SHORT_ADDR_LEN];
+static int serialfd = 0;
+static char * devname = "fakeserial0";
+static int baudrate = BAUDRATE;
 
 void print_version() {
 	printf("This software is provided \"AS IS.\"\n"
@@ -292,25 +297,51 @@ int client_setup(struct sockaddr * dest_addr, socklen_t * addr_len,
 }
 
 
-unsigned char read_one_byte(int fd) {
-	unsigned char buf[1];
+/* read a single character and returns it
+ * when this function is called, a character must be ready on the file
+ * descriptor */
+unsigned char read_one_byte() {
+	unsigned char buf[1] = { 0 };
+	ssize_t bytes = 0;
+	fd_set readfds;
 
-	if ( read(fd, buf, 1) <= 0 ) {
-		perror("read");
+	FD_ZERO(&readfds);
+	FD_SET(serialfd, &readfds);
+
+	if ( 0 >= select(serialfd+1, &readfds, NULL, NULL, NULL) ) {
+		perror("select()");
 		exit(EXIT_FAILURE);
 	}
+
+	bytes = read(serialfd, buf, 1);
+
+	if ( bytes <= 0 ) {
+		if (errno == EIO) {
+			PRINTF("closed connection to the serial port\n");
+			close(serialfd);
+			while ( (serialfd = set_serial(devname, baudrate)) < 0 ){
+				PRINTF("unable to reopen serial port\n");
+			}
+		} else {
+			perror("read");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	/* PRINTF("%02X", buf[0]); */
+
 	return buf[0];
 }
 
 /* send a success message that matches the command */
-void send_success(int fd, unsigned char type) {
+void send_success(unsigned char type) {
 	unsigned char buf[4] = { START_BYTE1,
 							 START_BYTE2,
 							 0, /* cmd */
 							 SUCCESS};
 
 	buf[2] = type | RESP_MASK; /* compute the response type */
-	if ( write(fd, buf, 4) < 0 ) {
+	if ( write(serialfd, buf, 4) < 0 ) {
 		perror("write");
 		exit(EXIT_FAILURE);
 	}
@@ -320,80 +351,84 @@ void send_success(int fd, unsigned char type) {
 
 /* parse command from the linux serial driver
  * see http://sourceforge.net/apps/trac/linux-zigbee/wiki/SerialV1 */
-void parse_cmd(int serialfd, int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len) {
+void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len) {
 	char buf[BUFSIZE] = { START_BYTE1, START_BYTE2 };
 	unsigned char cmd_type;
 
-	if ( START_BYTE1 != read_one_byte(serialfd) )
+	if ( START_BYTE1 != read_one_byte() )
 		return;
 
-	if ( START_BYTE2 != read_one_byte(serialfd) )
+	PRINTF("received 'z'\n");
+
+	if ( START_BYTE2 != read_one_byte() )
 		return;
 
-	cmd_type = read_one_byte(serialfd);
+	PRINTF("received 'b'\n");
+
+	cmd_type = read_one_byte();
 
 	PRINTF("parse_cmd: received a command of type %d\n", cmd_type);
 
 	switch (cmd_type) {
-	case SET_PANID: {
-		unsigned char hi, lo;
-		hi = read_one_byte(serialfd);
-		lo = read_one_byte(serialfd);
-		panid = hi << 8 | lo;
-		send_success(serialfd, cmd_type);
-		break;
-		}
-	case SET_SHORTADDR: {
-		ieee802154_short_addr[1] = read_one_byte(serialfd);
-		ieee802154_short_addr[0] = read_one_byte(serialfd);
-		send_success(serialfd, cmd_type);
-		break;
-		}
-	case SET_LONGADDR: {
-		int i = 0;
-		for(i=0; i < IEEE802154_LONG_ADDR_LEN; ++i)
-			ieee802154_long_addr[i] = read_one_byte(serialfd);
-		send_success(serialfd, cmd_type);
-		break;
-		}
-	case GET_ADDR: {
-		int i = 0;
-		buf[2] = cmd_type | RESP_MASK;
-		buf[3] = SUCCESS;
-		/* fill out the rest of the buffer */
-		for(i=0; i< IEEE802154_LONG_ADDR_LEN; i++)
-			buf[4+i] = ieee802154_long_addr[i];
-		send(serialfd, buf, 2 + 1+ 1 + IEEE802154_LONG_ADDR_LEN, 0);
-		break;
-		}
-	case TX_BLOCK: {
-		unsigned char len = 0;
-		int i;
-		len =  read_one_byte(serialfd);
-		for (i=0; i < len; i++)
-			buf[i] = read_one_byte(serialfd);
-		send_success(serialfd, cmd_type);
-		PRINTF("parse_cmd: sending IEEE 802.15.4 frame to the backend\n");
-		if (sendto(tosock, buf, len, 0, dest_addr, dest_addr_len) < 0) {
-			perror("sendto()");
-			exit(EXIT_FAILURE);
-		}
-		break;
-		}
-	case SET_CHANNEL:
-		/* currently ignore the channel being set */
-		read_one_byte(serialfd);
-		send_success(serialfd, cmd_type);
-		break;
-	default:
-		/* OPEN, CLOSE, ED, CCA, SET_STATE */
-		send_success(serialfd, cmd_type);
+		case SET_PANID: {
+							unsigned char hi, lo;
+							hi = read_one_byte();
+							lo = read_one_byte();
+							panid = hi << 8 | lo;
+							send_success(cmd_type);
+							break;
+						}
+		case SET_SHORTADDR: {
+								ieee802154_short_addr[1] = read_one_byte();
+								ieee802154_short_addr[0] = read_one_byte();
+								send_success(cmd_type);
+								break;
+							}
+		case SET_LONGADDR: {
+							   int i = 0;
+							   for(i=0; i < IEEE802154_LONG_ADDR_LEN; ++i)
+								   ieee802154_long_addr[i] = read_one_byte();
+							   send_success(cmd_type);
+							   break;
+						   }
+		case GET_ADDR: {
+						   int i = 0;
+						   buf[2] = cmd_type | RESP_MASK;
+						   buf[3] = SUCCESS;
+						   /* fill out the rest of the buffer */
+						   for(i=0; i< IEEE802154_LONG_ADDR_LEN; i++)
+							   buf[4+i] = ieee802154_long_addr[i];
+						   write(serialfd, buf, 2 + 1 + 1 + IEEE802154_LONG_ADDR_LEN);
+						   break;
+					   }
+		case TX_BLOCK: {
+						   unsigned char len = 0;
+						   int i;
+						   len =  read_one_byte();
+						   for (i=0; i < len; i++)
+							   buf[i] = read_one_byte();
+						   send_success(cmd_type);
+						   PRINTF("parse_cmd: sending IEEE 802.15.4 frame to the backend\n");
+						   if (sendto(tosock, buf, len, 0, dest_addr, dest_addr_len) < 0) {
+							   perror("sendto()");
+							   exit(EXIT_FAILURE);
+						   }
+						   break;
+					   }
+		case SET_CHANNEL:
+					   /* currently ignore the channel being set */
+					   read_one_byte();
+					   send_success(cmd_type);
+					   break;
+		default:
+					   /* OPEN, CLOSE, ED, CCA, SET_STATE */
+					   send_success(cmd_type);
 	}
 
 	return;
 }
 
-void send_to_linux(int fromsock, int serialfd) {
+void send_to_linux(int fromsock) {
 	char buf[BUFSIZE];
 	ssize_t msg_size;
 	unsigned char lqi = 0;
@@ -434,15 +469,13 @@ void send_to_linux(int fromsock, int serialfd) {
 	return;
 }
 
-
 int main(int argc, char *argv[]) {
-	int udpsock, serialfd;
-	int c, nfds, baudrate = BAUDRATE;
+	int udpsock;
+	int c, nfds;
 	fd_set readfds;
 	char * clidest = NULL;
 	char * udp_dport = NULL;
 	char * udp_lport = NULL;
-	char * devname = "fakeserial0";
 	struct sockaddr dest_addr;
 	socklen_t dest_addr_len = 0;
 
@@ -458,27 +491,27 @@ int main(int argc, char *argv[]) {
 			break;
 
 		switch(c) {
-		case 'd':
-			clidest = optarg;
-			break;
-		case 'b':
-			baudrate = atoi(optarg);
-			break;
-		case 'n':
-			devname = optarg;
-		case 'r':
-			udp_dport = optarg;
-			break;
-		case 'l':
-			udp_lport = optarg;
-			break;
-		case 'v':
-			print_version();
-			return 0;
-		case 'h':
-		default:
-			print_usage(argv[0]);
-			return 1;
+			case 'd':
+				clidest = optarg;
+				break;
+			case 'b':
+				baudrate = atoi(optarg);
+				break;
+			case 'n':
+				devname = optarg;
+			case 'r':
+				udp_dport = optarg;
+				break;
+			case 'l':
+				udp_lport = optarg;
+				break;
+			case 'v':
+				print_version();
+				return 0;
+			case 'h':
+			default:
+				print_usage(argv[0]);
+				return 1;
 		}
 	}
 
@@ -520,12 +553,12 @@ int main(int argc, char *argv[]) {
 		if (FD_ISSET(udpsock, &readfds)) {
 			PRINTF("select: received a packet from backend\n");
 			/* pass the packet to the kernel */
-			send_to_linux(udpsock, serialfd);
+			send_to_linux(udpsock);
 		}
 		if (FD_ISSET(serialfd, &readfds)) {
 			PRINTF("select: received a packet from the fake serial device\n");
 			/* need to parse the serial protocol */
-			parse_cmd(serialfd, udpsock, &dest_addr, dest_addr_len);
+			parse_cmd(udpsock, &dest_addr, dest_addr_len);
 		}
 	}
 
