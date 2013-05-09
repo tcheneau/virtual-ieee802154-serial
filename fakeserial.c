@@ -227,7 +227,7 @@ int client_setup(struct sockaddr * dest_addr, socklen_t * addr_len,
 			   continue;
 
 		   if (connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1) {
-			   int ret = -1, yes = 1;
+			   int ret = -1, yes = 1, sendbuff = 2048;
 			   struct sockaddr unspec;
 			   memcpy(dest_addr, rp->ai_addr, sizeof(struct sockaddr));
 			   * addr_len = rp->ai_addrlen;
@@ -246,6 +246,13 @@ int client_setup(struct sockaddr * dest_addr, socklen_t * addr_len,
 				   perror("setsockopt()");
 				   exit(EXIT_FAILURE);
 			   }
+
+			   if (setsockopt(sfd, SOL_SOCKET, SO_SNDBUF, &sendbuff,
+						   sizeof(sendbuff)) == -1) {
+				   perror("setsockopt()");
+				   exit(EXIT_FAILURE);
+			   }
+
 
 			   if (rp->ai_family == AF_INET)
 			   {
@@ -407,12 +414,12 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 						   len =  read_one_byte();
 						   for (i=0; i < len; i++)
 							   buf[i] = read_one_byte();
-						   send_success(cmd_type);
 						   PRINTF("parse_cmd: sending IEEE 802.15.4 frame to the backend\n");
 						   if (sendto(tosock, buf, len, 0, dest_addr, dest_addr_len) < 0) {
 							   perror("sendto()");
 							   exit(EXIT_FAILURE);
 						   }
+						   send_success(cmd_type);
 						   break;
 					   }
 		case SET_CHANNEL:
