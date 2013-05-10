@@ -21,13 +21,17 @@ and provides a virtual serial port for the communications (as illustrated in
 the right column above). It enables new uses for the Linux IEEE 802.15.4 and
 6LoWPAN stacks, such as debugging, or testbed virtualization.
 
+It ships with *udp-broker* program that emulates a very simple wireless channel with no
+packet loss.
+
 What is the benefit of this approach?
 -------------------------------------
 
 Because we mimic the functioning of an Econotag device, one could do the following:
 
-* connect to a simple echo-server for debugging the 6LoWPAN stack, without
-  having the randomness of real wireless communications
+* connect to a simple echo-server (such as the *udp-broker*, provided with the
+  sources) for debugging the 6LoWPAN stack, without having the randomness of
+  real wireless communications
 	* help getting familiar with the Linux 6LoWPAN stack without
 	  the need of any specialized hardware
 	* reliably debug the 6LoWPAN stack
@@ -83,10 +87,23 @@ On *6lowpan-node*:
 
 	./fakeserial -n /dev/fakeserial0 -d phy-node -l 4444 -r 3333
 
+On *phy-node*:
+
+	./udp-broker -l 3333
+
 Then you can run the regular steps for setting up a IEEE 802.15.4 node (using
 the serial driver).
 
 Note that *6lowpan-node* and *phy-node* can be collocated on the same node.
+
+About the udp-broker
+--------------------
+
+*udp-broker* is a simple UDP server that registers new clients when they first
+send a packet. It then broadcasts every message it receives to all the clients
+it previously registered (except the one that generated the message). Thus, it
+emulates a simplistic physical layer, where there is no packet loss and no
+propagation delay.
 
 Authors
 -------
