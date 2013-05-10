@@ -114,6 +114,7 @@ void print_version() {
 		    "this software.\n"
 			"\n"
 			"Written by Tony Cheneau <tony.cheneau@nist.gov>\n");
+    printf("Version 0.1\n");
 
 	exit(EXIT_SUCCESS);
 }
@@ -126,6 +127,8 @@ void print_usage(const char * prgname) {
 
 	printf("usage: %s -l portnum\n", prgname);
 	printf("-l, --local-port: local udp port to be bound\n");
+	printf("-v, --version: print the program version\n");
+	printf("-h, --help: print this help message\n");
 }
 
 int ipv6_server_setup(const char * lport) {
