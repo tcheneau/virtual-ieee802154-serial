@@ -24,8 +24,11 @@
 #include<stdio.h>
 #include<unistd.h>
 #include<getopt.h>
+#include<string.h>
 #include<sys/select.h>
 #include<sys/types.h>
+#include<sys/time.h>
+#include<fcntl.h>
 #include<sys/socket.h>
 #include<stdlib.h>
 #include<netdb.h>
@@ -44,6 +47,7 @@
 #ifdef HAVE_GETOPT_LONG
 static const struct option iz_long_opts[] = {
 	{ "local-port", required_argument, NULL, 'l' },
+    { "write", required_argument, NULL, 'w' },
 	{ "version", no_argument, NULL, 'v' },
 	{ "help", no_argument, NULL, 'h' },
 	{ NULL, 0, NULL, 0 },
@@ -55,6 +59,7 @@ struct client_list {
 	socklen_t addrlen;
 	struct client_list * next;
 };
+
 
 /* create a new list and initialize it with its first element */
 struct client_list * list_init (struct sockaddr * addr, socklen_t addrlen) {
@@ -125,8 +130,9 @@ void print_usage(const char * prgname) {
 			"Subsequently, all messages received by the broker will be send to"
 			"all the clients (except the one sending the message)\n");
 
-	printf("usage: %s -l portnum\n", prgname);
+	printf("usage: %s -l portnum [-w pcapfile]\n", prgname);
 	printf("-l, --local-port: local udp port to be bound\n");
+	printf("-w, --write: write all the packet to a pcap file\n");
 	printf("-v, --version: print the program version\n");
 	printf("-h, --help: print this help message\n");
 }
@@ -183,11 +189,80 @@ int ipv6_server_setup(const char * lport) {
 	return sfd;
 }
 
+/* from the pcap.h */
+struct pcap_file_header
+{
+    uint32_t    magic;
+    uint16_t    version_major;
+    uint16_t    version_minor;
+    int32_t     thiszone;
+    uint32_t    sigfigs;
+    uint32_t    snaplen;
+    uint32_t    linktype;
+};
+
+struct pcap_pkthdr {
+        uint32_t ts_sec;     /* time stamp (second) */
+        uint32_t ts_msec;    /* time stamp (microseconds) */
+        uint32_t caplen;     /* length of portion present */
+        uint32_t len;        /* length this packet (off wire) */
+};
+
+/* PCAP related helper function */
+
+void pcap_write_header(int fd) {
+    struct pcap_file_header header;
+
+    /* see pcap-savefile(5) */
+    header.magic = 0xa1b2c3d4;
+    header.version_major = 2;
+    header.version_minor = 4;
+    header.thiszone = 0;
+    header.sigfigs = 0;
+    header.snaplen = 127; /* max MTU on IEEE 802.15.4 links */
+    header.linktype = 230; /* IEEE 802.15.4 */
+
+    if (write(fd, &header, sizeof(header)) < 0) {
+        perror("write");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void pcap_write_packet(int fd, char * packet, size_t packet_len) {
+    struct pcap_pkthdr header;
+    struct timeval tv;
+
+    memset(&header, 0, sizeof(header));
+
+    gettimeofday(&tv, NULL);
+    /* force casting to 32 bit (struct timeval could be storing in 64 bit format)*/
+    header.ts_sec = (uint32_t) tv.tv_sec;
+    header.ts_msec = (uint32_t) tv.tv_usec;
+
+    header.caplen = packet_len;
+    header.len = packet_len;
+
+    if (write(fd, &header, sizeof(header)) < 0)
+        goto err;
+
+    if (write(fd, packet, packet_len) < 0)
+        goto err;
+
+
+    return;
+
+err:
+    perror("write");
+    exit(EXIT_FAILURE);
+}
+
 int main(int argc, char *argv[]) {
 	int udpsock;
+    int pcap_fd;
+    unsigned long int packet_seq = 0;
 	int c;
 	fd_set readfds;
-	char * udp_lport = NULL;
+	char * udp_lport = NULL, * pcap_file = NULL;
 	char buffer[BUFSIZE];
 	struct sockaddr client_addr;
 	socklen_t client_addr_len, len = 0;
@@ -197,9 +272,9 @@ int main(int argc, char *argv[]) {
 	while (1) {
 #ifdef HAVE_GETOPT_LONG
 		int opt_idx = -1;
-		c = getopt_long(argc, argv, "l:vh", iz_long_opts, &opt_idx);
+		c = getopt_long(argc, argv, "w:l:vh", iz_long_opts, &opt_idx);
 #else
-		c = getopt(argc, argv, "l:vh");
+		c = getopt(argc, argv, "w:l:vh");
 #endif
 		if (c == -1)
 			break;
@@ -211,6 +286,9 @@ int main(int argc, char *argv[]) {
 		case 'v':
 			print_version();
 			return 0;
+        case 'w':
+            pcap_file = optarg;
+            break;
 		case 'h':
 		default:
 			print_usage(argv[0]);
@@ -229,6 +307,20 @@ int main(int argc, char *argv[]) {
 		printf("\n\nerror: --local-port argument must be set\n");
 		exit(EXIT_FAILURE);
 	}
+
+    if (pcap_file) {
+        PRINTF("opening pcap file %s\n", pcap_file);
+        pcap_fd = open(pcap_file, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IRGRP);
+
+        if (pcap_fd < 0) {
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+
+        pcap_write_header(pcap_fd);
+    }
+
+
 
 	/* open the broker socket */
 	udpsock = ipv6_server_setup(udp_lport);
@@ -250,12 +342,16 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (FD_ISSET(udpsock, &readfds)) {
-			PRINTF("select: received a packet\n");
+			PRINTF("select: received a packet (%lu)\n", packet_seq++);
 			len = recvfrom(udpsock, buffer, BUFSIZE, 0, &client_addr, &client_addr_len);
 			if (len < 0) {
 				perror("recvfrom()");
 				exit(EXIT_FAILURE);
 			}
+
+            if (pcap_file)
+                pcap_write_packet(pcap_fd, buffer, len);
+
 
 			if ( (client = list_find(client_list, &client_addr, client_addr_len)) == NULL )
 			{
@@ -277,5 +373,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	close(udpsock);
+    close(pcap_fd);
 	return 0;
 }
