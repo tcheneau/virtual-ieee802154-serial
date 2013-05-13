@@ -385,19 +385,20 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 							send_success(cmd_type);
 							break;
 						}
-		case SET_SHORTADDR: {
-								ieee802154_short_addr[1] = read_one_byte();
-								ieee802154_short_addr[0] = read_one_byte();
-								send_success(cmd_type);
-								break;
-							}
-		case SET_LONGADDR: {
-							   int i = 0;
-							   for(i=0; i < IEEE802154_LONG_ADDR_LEN; ++i)
-								   ieee802154_long_addr[i] = read_one_byte();
-							   send_success(cmd_type);
-							   break;
-						   }
+		case SET_SHORTADDR:
+						ieee802154_short_addr[1] = read_one_byte();
+						ieee802154_short_addr[0] = read_one_byte();
+						send_success(cmd_type);
+						break;
+		case SET_LONGADDR:
+						if ( read(serialfd, ieee802154_long_addr,
+									IEEE802154_LONG_ADDR_LEN) < 0) {
+							perror("read");
+							exit(EXIT_FAILURE);
+						}
+
+						send_success(cmd_type);
+						break;
 		case GET_ADDR: {
 						   int i = 0;
 						   buf[2] = cmd_type | RESP_MASK;
@@ -410,10 +411,12 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 					   }
 		case TX_BLOCK: {
 						   unsigned char len = 0;
-						   int i;
 						   len =  read_one_byte();
-						   for (i=0; i < len; i++)
-							   buf[i] = read_one_byte();
+						   if ( read(serialfd, buf, len) != len ) {
+							   perror("read");
+							   exit(EXIT_FAILURE);
+						   }
+
 						   PRINTF("parse_cmd: sending IEEE 802.15.4 frame to the backend\n");
 						   if (sendto(tosock, buf, len, 0, dest_addr, dest_addr_len) < 0) {
 							   perror("sendto()");
@@ -436,16 +439,20 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 }
 
 void send_to_linux(int fromsock) {
-	char buf[BUFSIZE];
+	unsigned char buf[BUFSIZE];
 	ssize_t msg_size;
-	unsigned char lqi = 0;
 	struct msghdr msg;
 	struct iovec iov;
-	/* Receive block command */
-	unsigned char cmd[] = { 'z', 'b', 0x8b };
 
-	iov.iov_base = buf;
-	iov.iov_len = BUFSIZE;
+	/* Receive block command */
+	buf[0] = 'z';
+	buf[1] = 'b';
+	buf[2] = 0x8b;
+	/* LQI */
+	buf[3] = 0;
+
+	iov.iov_base = &buf[3 + 1 + 1];
+	iov.iov_len = BUFSIZE - (3 + 1 + 1);
 
 	msg.msg_name = NULL;
 	msg.msg_namelen = 0;
@@ -455,9 +462,9 @@ void send_to_linux(int fromsock) {
 	msg.msg_control = NULL;
 	msg.msg_controllen = 0;
 
-	memset((void *) buf, 0, BUFSIZE);
-
+	/* message length */
 	msg_size = recvmsg(fromsock, &msg, 0);
+	buf[4] = msg_size;
 
 	if (msg_size <= 0) {
 		perror("recvmsg()");
@@ -465,13 +472,7 @@ void send_to_linux(int fromsock) {
 	}
 
 	/* inject the packet in the Linux network stack */
-	write(serialfd, cmd, sizeof cmd);
-	/* send LQI */
-	write(serialfd, &lqi, 1);
-	/* send data length */
-	write(serialfd, &msg_size, 1);
-	/* send data */
-	write(serialfd, buf, msg_size);
+	write(serialfd, buf, 3 + 1 + 1 + msg_size);
 
 	return;
 }
