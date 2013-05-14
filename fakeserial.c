@@ -35,6 +35,7 @@
 #include <getopt.h>
 #include <errno.h>
 #include <termios.h>
+#include <time.h>
 
 #undef max
 #define max(x,y) ((x) > (y) ? (x) : (y))
@@ -86,6 +87,8 @@ static const struct option iz_long_opts[] = {
 	{ "udp-local-port", required_argument, NULL, 'l'},
 	{ "version", no_argument, NULL, 'v' },
 	{ "help", no_argument, NULL, 'h' },
+	{ "delay-rx", no_argument, NULL, 'x' },
+	{ "delay-tx", no_argument, NULL, 'y' },
 	{ NULL, 0, NULL, 0 },
 };
 #endif
@@ -98,6 +101,8 @@ static unsigned char ieee802154_short_addr[IEEE802154_SHORT_ADDR_LEN];
 static int serialfd = 0;
 static char * devname = "fakeserial0";
 static int baudrate = BAUDRATE;
+static struct timespec delay_tx;
+static struct timespec delay_rx;
 
 void print_version() {
 	printf("This software is provided \"AS IS.\"\n"
@@ -121,10 +126,13 @@ void print_usage(const char * prgname) {
 	printf("-b, --baudrate: baudrate of the fake serial port (default \"%d\")\n"
 		   "-n, --device-name: name of the fake serial port (default \"/dev/fakeserial0\")\n"
 		   "-d, --udp-dest: destination address for the UDP traffic sent to the backend\n"
-		   "-l, --udp-local-port: local udp port to be bound\n"
-		   "-r, --udp-remote-port: remote UDP port to connect to and to bind locally\n"
+		   "-l, --udp-local-port: local udp port to be bound\n",
+		   BAUDRATE);
+	printf("-r, --udp-remote-port: remote UDP port to connect to and to bind locally\n"
+		   "-x, --delay-rx: delay before reception (from UDP socket to the kernel), in milliseconds\n"
+		   "-y, --delay-tx: delay before transmission (from kernel to the UDP socket), in milliseconds\n"
 		   "-h, --help: this help message\n"
-		   "-v, --version: print program version and exits\n", BAUDRATE);
+		   "-v, --version: print program version and exits\n");
 }
 
 /* return the file descriptor to the fake serial device */
@@ -418,6 +426,12 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 						   }
 
 						   PRINTF("parse_cmd: sending IEEE 802.15.4 frame to the backend\n");
+
+							if (nanosleep(&delay_tx, NULL)) {
+								perror("nanosleep");
+								exit(EXIT_FAILURE);
+							}
+
 						   if (sendto(tosock, buf, len, 0, dest_addr, dest_addr_len) < 0) {
 							   perror("sendto()");
 							   exit(EXIT_FAILURE);
@@ -471,6 +485,12 @@ void send_to_linux(int fromsock) {
 		exit(EXIT_FAILURE);
 	}
 
+	if (nanosleep(&delay_rx, NULL)) {
+		perror("nanosleep");
+		exit(EXIT_FAILURE);
+	}
+
+
 	/* inject the packet in the Linux network stack */
 	write(serialfd, buf, 3 + 1 + 1 + msg_size);
 
@@ -487,13 +507,16 @@ int main(int argc, char *argv[]) {
 	struct sockaddr dest_addr;
 	socklen_t dest_addr_len = 0;
 
+	memset(&delay_rx, 0, sizeof(delay_rx));
+	memset(&delay_tx, 0, sizeof(delay_tx));
+
 	/* parse the arguments with getopt */
 	while (1) {
 #ifdef HAVE_GETOPT_LONG
 		int opt_idx = -1;
-		c = getopt_long(argc, argv, "b:n:d:l:r:vh", iz_long_opts, &opt_idx);
+		c = getopt_long(argc, argv, "x:y:b:n:d:l:r:vh", iz_long_opts, &opt_idx);
 #else
-		c = getopt(argc, argv, "b:n:d:l:r:vh");
+		c = getopt(argc, argv, "x:y:b:n:d:l:r:vh");
 #endif
 		if (c == -1)
 			break;
@@ -516,6 +539,32 @@ int main(int argc, char *argv[]) {
 			case 'v':
 				print_version();
 				return 0;
+			case 'x': {
+				long delay = atol(optarg);
+
+				if (delay <0) {
+					fprintf(stderr, "delay_rx must be a positive value\n");
+					exit(EXIT_FAILURE);
+				}
+
+				delay_rx.tv_sec = delay / 1000;
+				delay_rx.tv_nsec = ( delay % (1000) ) * 1000000;
+				break;
+				}
+			case 'y': {
+				long delay = atol(optarg);
+
+				if (delay <0) {
+					fprintf(stderr, "delay_tx must be a positive value\n");
+					exit(EXIT_FAILURE);
+				}
+
+				delay_tx.tv_sec = delay / 1000;
+				delay_tx.tv_nsec = ( delay % 1000 ) * 1000000;
+				break;
+
+				}
+
 			case 'h':
 			default:
 				print_usage(argv[0]);
