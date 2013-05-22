@@ -61,11 +61,16 @@ This program mimics the behavior of a IEEE 802.15.4 Serial device (e.g. RedBee E
 	usage: ./fakeserial -d destaddr -l portnum -r portnum [-b baudrate] [-n devicename]
 	-b, --baudrate: baudrate of the fake serial port (default "921600")
 	-n, --device-name: name of the fake serial port (default "/dev/fakeserial0")
-	-d, --udp-dest: destination address for the UDP traffic sent to the backend
-	-l, --udp-local-port: local udp port to be bound
+	-u, --udp-dest: destination address for the UDP traffic sent to the backend
+	-s, --udp-local-port: local udp port to be bound
 	-r, --udp-remote-port: remote UDP port to connect to and to bind locally
+	-x, --delay-rx: delay before reception (from UDP socket to the kernel), in milliseconds
+	-y, --delay-tx: delay before transmission (from kernel to the UDP socket), in milliseconds
+	-d, --datarate: data transmission/receiption rate, in bit per seconds (default unbounded)
+	-l, --latency: latency of the underlaying link, in microseconds (default 0)
 	-h, --help: this help message
 	-v, --version: print program version and exits
+
 
 Example of usage
 ----------------
@@ -85,7 +90,8 @@ do the following preliminary steps.
 
 On *6lowpan-node*:
 
-	./fakeserial -n /dev/fakeserial0 -d phy-node -l 4444 -r 3333
+	./fakeserial -n /dev/fakeserial0 -u phy-node -s 4444 -r 3333&
+
 
 On *phy-node*:
 
@@ -95,6 +101,27 @@ Then you can run the regular steps for setting up a IEEE 802.15.4 node (using
 the serial driver).
 
 Note that *6lowpan-node* and *phy-node* can be collocated on the same node.
+
+
+Rate limiting (currently experimental)
+--------------------------------------
+
+This implementation attempts to provide a realistic rate limiting behavior.
+This is incompatible with the other mechanism that adds delay when sending and
+receiving (*-x* and *-y*)This mechanism is driving by two parameters:
+
+* *datarate* of the virtual device: this is the data rate the device will try
+  to respect
+* *latency* of the link the virtual device works on: this is useful with the
+  (UDP) destination of the virtual device is not local. For example, on a
+  100mbps Ethernet link, this value is 0.5msec. If the virtual device and the
+  PHY emulation engine are collocated on the same node, this value does not need to be set.
+
+For example, if you want to emulate a 250kbps link over a 1ms delay link (e.g
+Wifi), you can do the following:
+
+	./fakeserial -n /dev/fakeserial0 -l 1000 -b 921600 -u 192.168.1.42 -s 4444 -r 3333 -d 250000&
+
 
 About the udp-broker
 --------------------

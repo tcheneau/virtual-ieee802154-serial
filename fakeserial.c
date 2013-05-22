@@ -37,6 +37,31 @@
 #include <termios.h>
 #include <time.h>
 
+#define timespec_isnull(ts) \
+	((ts)->tv_sec == 0 && (ts)->tv_nsec == 0)
+
+#define timespec_cmp(left, right, OP) \
+	(((left)->tv_sec == (right)->tv_sec) ? \
+	 ((left)->tv_nsec OP (right)->tv_nsec) :\
+	 ((left)->tv_sec OP (right)->tv_sec))
+
+#define timespec_sub(left, right) \
+	do { \
+		(left)->tv_sec -= (right)->tv_sec; \
+		if ( (left)->tv_nsec < (right)->tv_nsec ) { \
+			--(left)->tv_sec; \
+			(left)->tv_nsec += NSEC; \
+		} \
+		(left)->tv_nsec -= (right)->tv_nsec; \
+	} while (0)
+
+#define MSEC 1000
+#define USEC 1000000
+#define NSEC 1000000000
+#define USEC_TO_NSEC 1000
+#define MSEC_TO_NSEC 1000000
+
+
 #undef max
 #define max(x,y) ((x) > (y) ? (x) : (y))
 
@@ -83,12 +108,14 @@ static const struct option iz_long_opts[] = {
 	{ "udp-remote-port", required_argument, NULL, 'r' },
 	{ "baudrate", required_argument, NULL, 'b' },
 	{ "device-name", required_argument, NULL, 'n'},
-	{ "udp-dest", required_argument, NULL, 'd' },
-	{ "udp-local-port", required_argument, NULL, 'l'},
+	{ "udp-dest", required_argument, NULL, 'u' },
+	{ "udp-local-port", required_argument, NULL, 's'},
 	{ "version", no_argument, NULL, 'v' },
 	{ "help", no_argument, NULL, 'h' },
-	{ "delay-rx", no_argument, NULL, 'x' },
-	{ "delay-tx", no_argument, NULL, 'y' },
+	{ "delay-rx", required_argument, NULL, 'x' },
+	{ "delay-tx", required_argument, NULL, 'y' },
+	{ "latency", required_argument, NULL, 'l' },
+	{ "datarate", required_argument, NULL, 'd' },
 	{ NULL, 0, NULL, 0 },
 };
 #endif
@@ -101,8 +128,10 @@ static unsigned char ieee802154_short_addr[IEEE802154_SHORT_ADDR_LEN];
 static int serialfd = 0;
 static char * devname = "fakeserial0";
 static int baudrate = BAUDRATE;
+static long datarate = 0;
 static struct timespec delay_tx;
 static struct timespec delay_rx;
+static struct timespec link_latency = { 0, 0 };
 
 void print_version() {
 	printf("This software is provided \"AS IS.\"\n"
@@ -125,14 +154,26 @@ void print_usage(const char * prgname) {
 	printf("usage: %s -d destaddr -l portnum -r portnum [-b baudrate] [-n devicename]\n", prgname);
 	printf("-b, --baudrate: baudrate of the fake serial port (default \"%d\")\n"
 		   "-n, --device-name: name of the fake serial port (default \"/dev/fakeserial0\")\n"
-		   "-d, --udp-dest: destination address for the UDP traffic sent to the backend\n"
-		   "-l, --udp-local-port: local udp port to be bound\n",
+		   "-u, --udp-dest: destination address for the UDP traffic sent to the backend\n"
+		   "-s, --udp-local-port: local udp port to be bound\n",
 		   BAUDRATE);
 	printf("-r, --udp-remote-port: remote UDP port to connect to and to bind locally\n"
 		   "-x, --delay-rx: delay before reception (from UDP socket to the kernel), in milliseconds\n"
 		   "-y, --delay-tx: delay before transmission (from kernel to the UDP socket), in milliseconds\n"
+		   "-d, --datarate: data transmission/receiption rate, in bit per seconds (default unbounded)\n"
+		   "-l, --latency: latency of the underlaying link, in microseconds (default 0)\n"
 		   "-h, --help: this help message\n"
 		   "-v, --version: print program version and exits\n");
+}
+
+/* can be used to compute both TX and RX delays */
+void compute_transmission_delay(const unsigned int packet_len, const unsigned long datarate, struct timespec * delay) {
+	uint64_t result;
+
+	result = ( (uint64_t) packet_len * 8 * NSEC ) / datarate;
+	delay->tv_sec = result / NSEC;
+	delay->tv_nsec = result % NSEC;
+	PRINTF("transmission delay is %ld seconds and %ld nanoseconds\n", delay->tv_sec, delay->tv_nsec);
 }
 
 /* return the file descriptor to the fake serial device */
@@ -419,6 +460,7 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 					   }
 		case TX_BLOCK: {
 						   unsigned char len = 0;
+						   struct timespec transmission_delay = {0, 0};
 						   len =  read_one_byte();
 						   if ( read(serialfd, buf, len) != len ) {
 							   perror("read");
@@ -436,6 +478,24 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 							   perror("sendto()");
 							   exit(EXIT_FAILURE);
 						   }
+
+						   /* mimics the behavior of a busy radio transceiver */
+						   compute_transmission_delay(len, datarate, &transmission_delay);
+						   if (timespec_cmp(&transmission_delay, &link_latency, <))
+						   {
+							   PRINTF("Link latency is too high for this data rate. "
+									   "It is VERY likely to prevent the rate limiting function from working correctly");
+						   } else if (datarate) {
+							   timespec_sub(&transmission_delay, &link_latency);
+
+							   PRINTF("transmission delay (when latency is removed) is %ld seconds and %ld nanoseconds\n",
+									  transmission_delay.tv_sec, transmission_delay.tv_nsec);
+							   if (nanosleep(&transmission_delay, NULL)) {
+								  perror("nanosleep");
+								  exit(EXIT_FAILURE);
+							   }
+						   }
+
 						   send_success(cmd_type);
 						   break;
 					   }
@@ -457,6 +517,7 @@ void send_to_linux(int fromsock) {
 	ssize_t msg_size;
 	struct msghdr msg;
 	struct iovec iov;
+	struct timespec transmission_delay = {0,0};
 
 	/* Receive block command */
 	buf[0] = 'z';
@@ -494,6 +555,23 @@ void send_to_linux(int fromsock) {
 	/* inject the packet in the Linux network stack */
 	write(serialfd, buf, 3 + 1 + 1 + msg_size);
 
+	/* mimic the behavior of a busy radio while receiving */
+	compute_transmission_delay(msg_size, datarate, &transmission_delay);
+	if (timespec_cmp(&transmission_delay, &link_latency, <))
+	{
+		PRINTF("Link latency is too high for this data rate. "
+				"It is VERY likely to prevent the rate limiting function from working correctly\n");
+	} else if (datarate) {
+		timespec_sub(&transmission_delay, &link_latency);
+
+		PRINTF("transmission delay (when latency is removed) is %ld seconds and %ld nanoseconds\n",
+			   transmission_delay.tv_sec, transmission_delay.tv_nsec);
+		if (nanosleep(&transmission_delay, NULL)) {
+			perror("nanosleep");
+			exit(EXIT_FAILURE);
+		}
+	}
+
 	return;
 }
 
@@ -514,15 +592,15 @@ int main(int argc, char *argv[]) {
 	while (1) {
 #ifdef HAVE_GETOPT_LONG
 		int opt_idx = -1;
-		c = getopt_long(argc, argv, "x:y:b:n:d:l:r:vh", iz_long_opts, &opt_idx);
+		c = getopt_long(argc, argv, "u:s:x:y:b:n:d:l:r:vh", iz_long_opts, &opt_idx);
 #else
-		c = getopt(argc, argv, "x:y:b:n:d:l:r:vh");
+		c = getopt(argc, argv, "u:s:x:y:b:n:d:l:r:vh");
 #endif
 		if (c == -1)
 			break;
 
 		switch(c) {
-			case 'd':
+			case 'u':
 				clidest = optarg;
 				break;
 			case 'b':
@@ -533,7 +611,7 @@ int main(int argc, char *argv[]) {
 			case 'r':
 				udp_dport = optarg;
 				break;
-			case 'l':
+			case 's':
 				udp_lport = optarg;
 				break;
 			case 'v':
@@ -547,8 +625,8 @@ int main(int argc, char *argv[]) {
 					exit(EXIT_FAILURE);
 				}
 
-				delay_rx.tv_sec = delay / 1000;
-				delay_rx.tv_nsec = ( delay % (1000) ) * 1000000;
+				delay_rx.tv_sec = delay / MSEC;
+				delay_rx.tv_nsec = ( delay % (MSEC) ) * MSEC_TO_NSEC;
 				break;
 				}
 			case 'y': {
@@ -559,12 +637,28 @@ int main(int argc, char *argv[]) {
 					exit(EXIT_FAILURE);
 				}
 
-				delay_tx.tv_sec = delay / 1000;
-				delay_tx.tv_nsec = ( delay % 1000 ) * 1000000;
+				delay_tx.tv_sec = delay / MSEC;
+				delay_tx.tv_nsec = ( delay % MSEC ) * MSEC_TO_NSEC;
 				break;
 
 				}
+			case 'd':
+				datarate = atol(optarg);
+				break;
+			case 'l': {
+				long latency_l = atol(optarg);
 
+				if (latency_l <0) {
+					fprintf(stderr, "latency must be a positive value\n");
+					exit(EXIT_FAILURE);
+				}
+
+				link_latency.tv_sec = latency_l / USEC;
+				link_latency.tv_nsec = ( latency_l % USEC ) * USEC_TO_NSEC;
+
+				PRINTF("link latency: %ld seconds %ld nanoseconds\n", link_latency.tv_sec, link_latency.tv_nsec);
+				break;
+				}
 			case 'h':
 			default:
 				print_usage(argv[0]);
@@ -579,9 +673,17 @@ int main(int argc, char *argv[]) {
 	}
 
 	if ( !(udp_lport && clidest && udp_dport) ){
-		printf("-l, -r, and -d arguments must be set\n");
+		printf("-s, -r, and -u arguments must be set\n");
 		exit(EXIT_FAILURE);
 	}
+
+	/* combination of RX/TX delays and rate limiting does not seem to make a lot of
+	 * sense, if you came up with a scenario for that, I'm interested */
+	if ( (timespec_isnull(&delay_rx) || timespec_isnull(&delay_tx)) &&
+		  datarate )
+		printf("Both the TX and/or RX delay(s) and the rate limiting mechanism have been enabled.\n"
+			   "While it is not forbidden, it will result in a unpredictable delay.\n"
+			   "You have been warned!\n");
 
 	/* set the fake serial port */
 	serialfd = set_serial(devname, baudrate);
