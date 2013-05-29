@@ -220,7 +220,7 @@ void pcap_write_header(int fd) {
     header.thiszone = 0;
     header.sigfigs = 0;
     header.snaplen = 127; /* max MTU on IEEE 802.15.4 links */
-    header.linktype = 230; /* IEEE 802.15.4 */
+    header.linktype = 195; /* IEEE 802.15.4 + FCS, see http://www.tcpdump.org/linktypes.html */
 
     if (write(fd, &header, sizeof(header)) < 0) {
         perror("write");

@@ -36,6 +36,7 @@
 #include <errno.h>
 #include <termios.h>
 #include <time.h>
+#include "thirdparty/crc.h"
 
 #define timespec_isnull(ts) \
 	((ts)->tv_sec == 0 && (ts)->tv_nsec == 0)
@@ -60,7 +61,6 @@
 #define NSEC 1000000000
 #define USEC_TO_NSEC 1000
 #define MSEC_TO_NSEC 1000000
-
 
 #undef max
 #define max(x,y) ((x) > (y) ? (x) : (y))
@@ -94,6 +94,7 @@
 
 #define IEEE802154_LONG_ADDR_LEN 8
 #define IEEE802154_SHORT_ADDR_LEN 2
+#define IEEE802154_FCS_LEN 2
 
 #define SINGLE_CONNECTION 1
 /* 127 (max frame size) + 5 (max command size) */
@@ -460,6 +461,7 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 					   }
 		case TX_BLOCK: {
 						   uint8_t len = 0;
+						   uint16_t fcs;
 						   struct timespec transmission_delay = {0, 0};
 						   len =  read_one_byte();
 						   if ( read(serialfd, buf, len) != len ) {
@@ -473,6 +475,12 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 								perror("nanosleep");
 								exit(EXIT_FAILURE);
 							}
+
+						   /* compute the FCS */
+						   fcs = crc16_block(0x0000, buf, len);
+						   buf[len] = fcs & 0xff;
+						   buf[len+1] = fcs >> 8;
+						   len += IEEE802154_FCS_LEN;
 
 						   if (sendto(tosock, buf, len, 0, dest_addr, dest_addr_len) < 0) {
 							   perror("sendto()");
@@ -515,6 +523,7 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 void send_to_linux(int fromsock) {
 	uint8_t buf[BUFSIZE];
 	ssize_t msg_size;
+	uint16_t computed_fcs =0, msg_fcs = 0;
 	struct msghdr msg;
 	struct iovec iov;
 	struct timespec transmission_delay = {0,0};
@@ -539,7 +548,7 @@ void send_to_linux(int fromsock) {
 
 	/* message length */
 	msg_size = recvmsg(fromsock, &msg, 0);
-	buf[4] = msg_size;
+	buf[4] = msg_size - IEEE802154_FCS_LEN;
 
 	if (msg_size <= 0) {
 		perror("recvmsg()");
@@ -551,9 +560,16 @@ void send_to_linux(int fromsock) {
 		exit(EXIT_FAILURE);
 	}
 
+	msg_fcs = buf[3 + 1 + 1 + msg_size - 2] | buf[3 + 1 + 1 + msg_size - 1] << 8;
+	computed_fcs = crc16_block(0x0000, &buf[5], msg_size - IEEE802154_FCS_LEN);
 
-	/* inject the packet in the Linux network stack */
-	write(serialfd, buf, 3 + 1 + 1 + msg_size);
+	if ( msg_fcs != computed_fcs ) {
+		printf("Received a message with an incorrect CRC (received %X, expected %X), dropping it\n",
+			   msg_fcs, computed_fcs);
+	} else {
+		/* inject the packet in the Linux network stack */
+		write(serialfd, buf, 3 + 1 + 1 + msg_size - IEEE802154_FCS_LEN);
+	}
 
 	/* mimic the behavior of a busy radio while receiving */
 	compute_transmission_delay(msg_size, datarate, &transmission_delay);
