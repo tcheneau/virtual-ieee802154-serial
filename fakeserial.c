@@ -679,9 +679,10 @@ int main(int argc, char *argv[]) {
 
 	/* combination of RX/TX delays and rate limiting does not seem to make a lot of
 	 * sense, if you came up with a scenario for that, I'm interested */
-	if ( (timespec_isnull(&delay_rx) || timespec_isnull(&delay_tx)) &&
+	if ( (!timespec_isnull(&delay_rx) || !timespec_isnull(&delay_tx)) &&
 		  datarate )
-		printf("Both the TX and/or RX delay(s) and the rate limiting mechanism have been enabled.\n"
+		fprintf(stderr,
+			   "Both the TX and/or RX delay(s) and the rate limiting mechanism have been enabled.\n"
 			   "While it is not forbidden, it will result in a unpredictable delay.\n"
 			   "You have been warned!\n");
 
