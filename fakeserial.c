@@ -123,8 +123,8 @@ static const struct option iz_long_opts[] = {
 /* global variables */
 
 static uint16_t panid;
-static unsigned char ieee802154_long_addr[IEEE802154_LONG_ADDR_LEN];
-static unsigned char ieee802154_short_addr[IEEE802154_SHORT_ADDR_LEN];
+static uint8_t ieee802154_long_addr[IEEE802154_LONG_ADDR_LEN];
+static uint8_t ieee802154_short_addr[IEEE802154_SHORT_ADDR_LEN];
 static int serialfd = 0;
 static char * devname = "fakeserial0";
 static int baudrate = BAUDRATE;
@@ -356,8 +356,8 @@ int client_setup(struct sockaddr * dest_addr, socklen_t * addr_len,
 /* read a single character and returns it
  * when this function is called, a character must be ready on the file
  * descriptor */
-unsigned char read_one_byte() {
-	unsigned char buf[1] = { 0 };
+uint8_t read_one_byte() {
+	uint8_t buf[1] = { 0 };
 	ssize_t bytes = 0;
 	fd_set readfds;
 
@@ -390,8 +390,8 @@ unsigned char read_one_byte() {
 }
 
 /* send a success message that matches the command */
-void send_success(unsigned char type) {
-	unsigned char buf[4] = { START_BYTE1,
+void send_success(uint8_t type) {
+	uint8_t buf[4] = { START_BYTE1,
 							 START_BYTE2,
 							 0, /* cmd */
 							 SUCCESS};
@@ -408,8 +408,8 @@ void send_success(unsigned char type) {
 /* parse command from the linux serial driver
  * see http://sourceforge.net/apps/trac/linux-zigbee/wiki/SerialV1 */
 void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len) {
-	char buf[BUFSIZE] = { START_BYTE1, START_BYTE2 };
-	unsigned char cmd_type;
+	uint8_t buf[BUFSIZE] = { START_BYTE1, START_BYTE2 };
+	uint8_t cmd_type;
 
 	if ( START_BYTE1 != read_one_byte() )
 		return;
@@ -427,7 +427,7 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 
 	switch (cmd_type) {
 		case SET_PANID: {
-							unsigned char hi, lo;
+							uint8_t hi, lo;
 							hi = read_one_byte();
 							lo = read_one_byte();
 							panid = hi << 8 | lo;
@@ -459,7 +459,7 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 						   break;
 					   }
 		case TX_BLOCK: {
-						   unsigned char len = 0;
+						   uint8_t len = 0;
 						   struct timespec transmission_delay = {0, 0};
 						   len =  read_one_byte();
 						   if ( read(serialfd, buf, len) != len ) {
@@ -513,7 +513,7 @@ void parse_cmd(int tosock, struct sockaddr * dest_addr, socklen_t dest_addr_len)
 }
 
 void send_to_linux(int fromsock) {
-	unsigned char buf[BUFSIZE];
+	uint8_t buf[BUFSIZE];
 	ssize_t msg_size;
 	struct msghdr msg;
 	struct iovec iov;
