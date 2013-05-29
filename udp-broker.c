@@ -27,11 +27,20 @@
 #include<string.h>
 #include<sys/select.h>
 #include<sys/types.h>
-#include<sys/time.h>
-#include<fcntl.h>
 #include<sys/socket.h>
-#include<stdlib.h>
+
+#ifndef __USE_POSIX
+#define __USE_POSIX
 #include<netdb.h>
+#undef __USE_POSIX
+#else
+#include<netdb.h>
+#endif
+
+#include<sys/time.h>
+#include<sys/stat.h>
+#include<fcntl.h>
+#include<stdlib.h>
 #include<string.h>
 
 #ifdef DEBUG
@@ -342,7 +351,8 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (FD_ISSET(udpsock, &readfds)) {
-			PRINTF("select: received a packet (%lu)\n", packet_seq++);
+			PRINTF("select: received a packet (%lu)\n", packet_seq);
+            ++packet_seq;
 			len = recvfrom(udpsock, buffer, BUFSIZE, 0, &client_addr, &client_addr_len);
 			if (len < 0) {
 				perror("recvfrom()");
